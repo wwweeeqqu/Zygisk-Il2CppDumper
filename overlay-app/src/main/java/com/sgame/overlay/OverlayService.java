@@ -26,7 +26,7 @@ public class OverlayService extends Service {
     // so we use TCP loopback instead.
     private static final String SOCK_HOST = "127.0.0.1";
     private static final int SOCK_PORT = 47291;
-    private static final int ACTOR_BYTES = 52;
+    private static final int ACTOR_BYTES = 48;  // 12 int32 fields, packed
 
     private WindowManager wm;
     private OverlayView view;
@@ -79,7 +79,7 @@ public class OverlayService extends Service {
             ? new Notification.Builder(this, ch)
             : new Notification.Builder(this);
         Notification n = b.setContentTitle("sgame ESP overlay")
-            .setContentText("绛夊緟 sgame 杩炴帴...")
+            .setContentText("缁涘绶?sgame 鏉╃偞甯?..")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build();
         if (Build.VERSION.SDK_INT >= 34) {
