@@ -79,7 +79,7 @@ public class OverlayService extends Service {
             .setContentText("等待 sgame 连接...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (Build.VERSION.SDK_INT >= 34) {
             startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
             startForeground(1, n);
