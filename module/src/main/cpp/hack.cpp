@@ -25,8 +25,9 @@ void hack_start(const char *game_data_dir) {
         if (handle) {
             load = true;
             il2cpp_api_init(handle);
-            il2cpp_dump(game_data_dir);
-            // ESP loop after dump
+            // [v21] skip il2cpp_dump to (1) save 53s startup (2) avoid probabilistic
+            // crash in dumper enumerating 26k generic classes. dump.cs already produced.
+            // il2cpp_dump(game_data_dir);
             esp_start(game_data_dir);
             break;
         } else {
@@ -115,8 +116,7 @@ struct NativeBridgeCallbacks {
 };
 
 bool NativeBridgeLoad(const char *game_data_dir, int api_level, void *data, size_t length) {
-    //TODO 等待houdini初始化
-    sleep(5);
+    //TODO 绛夊緟houdini鍒濆鍖?    sleep(5);
 
     auto libart = dlopen("libart.so", RTLD_NOW);
     auto JNI_GetCreatedJavaVMs = (jint (*)(JavaVM **, jsize, jsize *)) dlsym(libart,
