@@ -253,30 +253,19 @@ static int scan_actors(std::vector<EspActor> &out) {
         if (p_hash < 0 && p_next < 0) continue;
         if (!is_plausible_ptr(player)) continue;
 
-        // One-shot diagnostic: dump class name + offsets + first 0x60 bytes of player[0]
-        if (!cached_player_klass) {
-            cached_player_klass = il2cpp_object_get_class((Il2CppObject *)player);
-            if (cached_player_klass) {
-                cached_player_class_name = il2cpp_class_get_name(cached_player_klass);
-                LOGI("[esp v22] player[0] class=%s", cached_player_class_name ? cached_player_class_name : "?");
-                FieldInfo *f_camp = il2cpp_class_get_field_from_name(cached_player_klass, "playerCamp");
-                FieldInfo *f_pos  = il2cpp_class_get_field_from_name(cached_player_klass, "campPos");
-                FieldInfo *f_cfg  = il2cpp_class_get_field_from_name(cached_player_klass, "captainConfigID");
-                FieldInfo *f_cap  = il2cpp_class_get_field_from_name(cached_player_klass, "Captain");
-                if (f_camp) { int r = il2cpp_field_get_offset(f_camp); off_p_camp = (r >= 0x10) ? r : (r + 0x10); }
-                if (f_pos)  { int r = il2cpp_field_get_offset(f_pos);  off_p_pos  = (r >= 0x10) ? r : (r + 0x10); }
-                if (f_cfg)  { int r = il2cpp_field_get_offset(f_cfg);  off_p_cfg  = (r >= 0x10) ? r : (r + 0x10); }
-                if (f_cap)  { int r = il2cpp_field_get_offset(f_cap);  off_p_captain = (r >= 0x10) ? r : (r + 0x10); }
-                LOGI("[esp v22] Player offsets: camp=0x%x pos=0x%x cfg=0x%x captain=0x%x",
-                     off_p_camp, off_p_pos, off_p_cfg, off_p_captain);
-                // Dump first 0x60 bytes of player[0]
-                for (int r = 0; r < 6; ++r) {
-                    uint64_t a = *(uint64_t *)((char *)player + r*16);
-                    uint64_t b = *(uint64_t *)((char *)player + r*16 + 8);
-                    LOGI("[esp v22] player[0]+%02x: %016llx %016llx", r*16,
-                         (unsigned long long)a, (unsigned long long)b);
-                }
+        // One-shot diagnostic: pure memory dump (no IL2CPP API which returned null).
+        // Will dump first 0x200 bytes of player[0] so we can see exactly where camp / cfg / Captain live.
+        static bool dumped = false;
+        if (!dumped) {
+            LOGI("[esp v22] === player[0] hex dump @ %p ===", player);
+            for (int r = 0; r < 32; ++r) {
+                uint64_t a = *(uint64_t *)((char *)player + r*16);
+                uint64_t b = *(uint64_t *)((char *)player + r*16 + 8);
+                LOGI("[esp v22] +%03x: %016llx %016llx", r*16,
+                     (unsigned long long)a, (unsigned long long)b);
             }
+            LOGI("[esp v22] === end dump ===");
+            dumped = true;
         }
 
         // Use API-discovered offset if available, else fall back to dump.cs guess.
