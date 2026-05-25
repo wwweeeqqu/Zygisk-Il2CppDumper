@@ -236,7 +236,7 @@ static void scan_thread() {
     LOGI("[esp v11] scan loop starting");
 
     while (true) {
-        usleep(500 * 1000);  // 500 ms period
+        usleep(150 * 1000);  // 150 ms period (~6.7 Hz)
 
         int fd = g_client_fd.load();
         if (fd < 0) continue;  // no client, skip work
