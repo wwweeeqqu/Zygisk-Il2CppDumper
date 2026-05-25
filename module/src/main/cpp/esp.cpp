@@ -24,6 +24,8 @@
 #include <cstdio>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <errno.h>
@@ -62,8 +64,9 @@ struct EspHeader {
 };
 #pragma pack(pop)
 
-#define SOCK_NAME "sgame_esp"  // abstract Unix socket name (Linux-specific)
-#define SOCK_PORT_DEFAULT 47291  // fallback TCP loopback port
+// SELinux blocks untrusted_app -> untrusted_app abstract unix sockets,
+// so we use TCP loopback instead.
+#define SOCK_PORT 47291
 
 // ===== shared state =====
 static std::mutex g_actors_mtx;
@@ -94,7 +97,7 @@ static void *get_singleton_instance(Il2CppClass *klass) {
     return inst;
 }
 
-// Scan ActorManager.updatableActorList → populate output vector
+// Scan ActorManager.updatableActorList 鈫?populate output vector
 // Returns count of actors collected (0 if AM not ready).
 static int scan_actors(std::vector<EspActor> &out) {
     out.clear();
@@ -186,40 +189,41 @@ static bool send_snapshot(int fd, const std::vector<EspActor> &actors) {
     return n > 0;
 }
 
-// Server thread: bind abstract socket, accept one client at a time, hand fd to global
+// Server thread: bind TCP loopback, accept one client at a time, hand fd to global
 static void server_thread() {
-    LOGI("[esp v11] server thread, tid=%d", gettid());
-    int srv = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (srv < 0) { LOGE("[esp v11] socket() errno=%d", errno); return; }
+    LOGI("[esp v12] server thread, tid=%d", gettid());
+    int srv = socket(AF_INET, SOCK_STREAM, 0);
+    if (srv < 0) { LOGE("[esp v12] socket() errno=%d", errno); return; }
 
-    struct sockaddr_un addr = {};
-    addr.sun_family = AF_UNIX;
-    // Abstract namespace: first byte 0, then name
-    addr.sun_path[0] = '\0';
-    strncpy(addr.sun_path + 1, SOCK_NAME, sizeof(addr.sun_path) - 2);
-    socklen_t addrlen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(SOCK_NAME);
+    int yes = 1;
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
-    if (bind(srv, (struct sockaddr *)&addr, addrlen) < 0) {
-        LOGE("[esp v11] bind @%s errno=%d", SOCK_NAME, errno);
+    struct sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_port   = htons(SOCK_PORT);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        LOGE("[esp v12] bind 127.0.0.1:%d errno=%d", SOCK_PORT, errno);
         close(srv);
         return;
     }
     if (listen(srv, 4) < 0) {
-        LOGE("[esp v11] listen errno=%d", errno);
+        LOGE("[esp v12] listen errno=%d", errno);
         close(srv);
         return;
     }
-    LOGI("[esp v11] listening on abstract @%s", SOCK_NAME);
+    LOGI("[esp v12] listening on 127.0.0.1:%d", SOCK_PORT);
 
     while (true) {
         int cli = accept(srv, nullptr, nullptr);
         if (cli < 0) {
             if (errno == EINTR) continue;
-            LOGE("[esp v11] accept errno=%d", errno);
+            LOGE("[esp v12] accept errno=%d", errno);
             sleep(1);
             continue;
         }
-        LOGI("[esp v11] client connected fd=%d", cli);
+        LOGI("[esp v12] client connected fd=%d", cli);
         int old = g_client_fd.exchange(cli);
         if (old >= 0) close(old);
     }
