@@ -8,6 +8,7 @@ import android.view.View;
 
 public class OverlayView extends View {
     private OverlayService.Actor[] actors = new OverlayService.Actor[0];
+    private int dumpCounter = 0;
     private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -53,45 +54,52 @@ public class OverlayView extends View {
 
         float scale = (mapSize / 2) / WORLD_HALF;
 
-        // Only draw ENEMY heroes (camp=2, type=2). Game already shows own team on its minimap.
-        int enemyHero = 0;
+        // Draw ALL enemy type=2 camp=2 actors with battleOrder + configId label so user
+        // can identify which moves (= hero) vs which is stationary (= base/crystal/pet).
         int rawType2Camp2 = 0;
         StringBuilder dbg = new StringBuilder();
         for (OverlayService.Actor a : actors) {
             if (a.type != 2 || a.camp != 2) continue;
             rawType2Camp2++;
-            // Heuristic: real heroes have battleOrder 0..9 (5v5).
-            // Summons / pets / clones get higher battleOrder.
-            if (a.battleOrder < 0 || a.battleOrder > 9) continue;
             float dx = cx + a.x * scale;
             float dy = cy - a.z * scale;
-            // Clamp to map edge (don't drop off-map - draw at boundary so user sees direction)
-            float clampedX = Math.max(left + 16, Math.min(left + mapSize - 16, dx));
-            float clampedY = Math.max(top + 16, Math.min(top + mapSize - 16, dy));
+            float clampedX = Math.max(left + 14, Math.min(left + mapSize - 14, dx));
+            float clampedY = Math.max(top + 14, Math.min(top + mapSize - 14, dy));
             boolean offMap = (clampedX != dx || clampedY != dy);
 
-            enemyHero++;
             int main = Color.argb(255, 255, 70, 70);
-            int halo = Color.argb(offMap ? 60 : 120, 255, 70, 70);
+            int halo = Color.argb(offMap ? 50 : 100, 255, 70, 70);
             dotPaint.setColor(halo);
-            c.drawCircle(clampedX, clampedY, 30f, dotPaint);
+            c.drawCircle(clampedX, clampedY, 22f, dotPaint);
             dotPaint.setColor(main);
-            c.drawCircle(clampedX, clampedY, 16f, dotPaint);
-            // Label: battleOrder index
+            c.drawCircle(clampedX, clampedY, 11f, dotPaint);
+            // Label: "bX/cY" battleOrder/configId-suffix
             textPaint.setColor(Color.WHITE);
-            c.drawText(String.valueOf(a.battleOrder), clampedX - 8, clampedY + 9, textPaint);
-            if (dbg.length() < 240) {
-                dbg.append("b").append(a.battleOrder)
-                   .append(" cfg=").append(a.configId)
-                   .append(" (").append((int)a.x).append(",").append((int)a.z).append(") ");
-            }
+            textPaint.setTextSize(20);
+            c.drawText("b" + a.battleOrder, clampedX - 14, clampedY - 14, textPaint);
+            c.drawText(String.valueOf(a.configId % 1000), clampedX - 16, clampedY + 26, textPaint);
+            textPaint.setTextSize(28);
         }
 
-        c.drawText("enemy=" + enemyHero + " raw=" + rawType2Camp2
-                   + "  /" + actors.length,
+        c.drawText("enemy raw=" + rawType2Camp2 + "  /" + actors.length,
                    left + 8, top + 30, textPaint);
-        if (dbg.length() > 0) {
-            android.util.Log.i("sgame_overlay", "enemies: " + dbg);
+
+        // Dump every ~1.5s (10th call at 150ms tick).
+        dumpCounter++;
+        if (dumpCounter >= 10) {
+            dumpCounter = 0;
+            for (OverlayService.Actor a : actors) {
+                if (a.type != 2 || a.camp != 2) continue;
+                if (dbg.length() < 800) {
+                    dbg.append("b").append(a.battleOrder)
+                       .append(" cfg=").append(a.configId)
+                       .append(" obj=").append(a.objId)
+                       .append(" (").append((int)a.x).append(",").append((int)a.z).append(") | ");
+                }
+            }
+            if (dbg.length() > 0) {
+                android.util.Log.i("sgame_overlay", "enemies: " + dbg);
+            }
         }
     }
 }
