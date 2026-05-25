@@ -235,15 +235,6 @@ static int scan_actors(std::vector<EspActor> &out) {
         return (int)out.size();
     }
 
-    // Discover Player class field offsets via IL2CPP API once.
-    // dump.cs may report relative-to-field-area offsets (we add +0x10 if < 0x10).
-    static Il2CppClass *cached_player_klass = nullptr;
-    static int off_p_camp = -1;
-    static int off_p_pos = -1;
-    static int off_p_cfg = -1;
-    static int off_p_captain = -1;
-    static const char *cached_player_class_name = nullptr;
-
     for (int i = 0; i < p_count + 4 && i < 32; ++i) {
         char *pe = (char *)p_entries + 0x18 + i * 24;
         int p_hash = *(int *)(pe + 0);
@@ -253,33 +244,16 @@ static int scan_actors(std::vector<EspActor> &out) {
         if (p_hash < 0 && p_next < 0) continue;
         if (!is_plausible_ptr(player)) continue;
 
-        // One-shot diagnostic: pure memory dump (no IL2CPP API which returned null).
-        // Will dump first 0x200 bytes of player[0] so we can see exactly where camp / cfg / Captain live.
-        static bool dumped = false;
-        if (!dumped) {
-            LOGI("[esp v22] === player[0] hex dump @ %p ===", player);
-            for (int r = 0; r < 32; ++r) {
-                uint64_t a = *(uint64_t *)((char *)player + r*16);
-                uint64_t b = *(uint64_t *)((char *)player + r*16 + 8);
-                LOGI("[esp v22] +%03x: %016llx %016llx", r*16,
-                     (unsigned long long)a, (unsigned long long)b);
-            }
-            LOGI("[esp v22] === end dump ===");
-            dumped = true;
-        }
+        // v22.3 diagnostic: stuff player memory probes into EspActor.fwd_* fields so PC
+        // can read them directly (LOGI doesn't reach logcat for this thread for unknown reason).
+        // Captain at +0x198 is verified working; need to find where playerCamp / configId live.
+        int probe_a = *(int *)((char *)player + 0x8);    // candidate playerCamp (dump.cs)
+        int probe_b = *(int *)((char *)player + 0x18);   // candidate playerCamp (+0x10 header shift)
+        int probe_c = *(int *)((char *)player + 0x180);  // candidate captainConfigID (dump.cs)
+        int probe_d = *(int *)((char *)player + 0x190);  // candidate captainConfigID (+0x10 shift)
 
-        // Use API-discovered offset if available, else fall back to dump.cs guess.
-        int o_camp = (off_p_camp >= 0) ? off_p_camp : 0x8;
-        int o_pos  = (off_p_pos  >= 0) ? off_p_pos  : 0xc;
-        int o_cfg  = (off_p_cfg  >= 0) ? off_p_cfg  : 0x180;
-        int o_cap  = (off_p_captain >= 0) ? off_p_captain : 0x198;
-
-        int p_camp = *(int *)((char *)player + o_camp);
-        int p_pos  = *(int *)((char *)player + o_pos);
-        uint32_t p_cfg = *(uint32_t *)((char *)player + o_cfg);
-
-        // Captain is PoolObjHandle<ActorConfig>, T* at handle+8
-        char *cap_handle = (char *)player + o_cap;
+        // Captain is PoolObjHandle<ActorConfig>, T* at handle+8 鈥?known working
+        char *cap_handle = (char *)player + 0x198;
         void *hac = *(void **)(cap_handle + POOLHANDLE_T_PTR);
         if (!is_plausible_ptr(hac)) continue;
 
@@ -289,16 +263,18 @@ static int scan_actors(std::vector<EspActor> &out) {
         if (!is_plausible_ptr(hal)) continue;
 
         EspActor a;
-        a.key         = p_key;  // playerId
-        a.type        = 0;       // HERO marker (overlay filters type==0)
-        a.configId    = (int)p_cfg;
-        a.camp        = p_camp;  // REAL camp from Player
-        a.battleOrder = p_pos;
+        a.key         = p_key;
+        a.type        = 0;        // HERO marker
+        a.configId    = probe_c;  // probe captainConfigID @ +0x180
+        a.camp        = probe_a;  // probe playerCamp @ +0x8
+        a.battleOrder = probe_b;  // probe playerCamp @ +0x18
         a.objId       = *(uint32_t *)((char *)hal + AL_OBJID);
         float *hp     = (float *)((char *)hal + AL_POSITION);
         a.x = hp[0]; a.y = hp[1]; a.z = hp[2];
-        int   *hf     = (int *)((char *)hal + AL_FORWARD);
-        a.fwd_x = hf[0]; a.fwd_y = hf[1]; a.fwd_z = hf[2];
+        // fwd fields repurposed as diagnostic probes
+        a.fwd_x = probe_d;  // candidate captainConfigID @ +0x190
+        a.fwd_y = (int)((uintptr_t)player & 0xFFFFFFFF);       // low 32 of player ptr
+        a.fwd_z = (int)((uintptr_t)player >> 32);              // high 32 of player ptr
         out.push_back(a);
     }
 
